@@ -112,3 +112,76 @@ Resultado: **PASS** en `fmt`, `lint`, `check` y `build`.
 | check            | 🟢 PASS | tipado correcto                                    |
 | build            | 🟢 PASS | build Fresh/Vite completado                        |
 | smoke runtime    | 🟢 PASS | `/lobby` y API Princesa respondiendo correctamente |
+
+---
+
+## Ciclo de supervisión por células (2026-03-07 23:20 -03)
+
+Objetivo: iniciar ejecución por células (Backend/Frontend/QA), fijar hitos
+24h-48h, y definir gates de merge/release con tablero único de control.
+
+### Estado actual validado del repo
+
+- Scope validado: `projects/boardgame-fresh-rebuild`.
+- Gates ejecutados en este ciclo:
+  - `deno task check` -> 🟢 PASS
+  - `deno task build` -> 🟢 PASS
+- Estado técnico observado:
+  - API de lobby y start operativa (`routes/api/lobby/rooms/*`)
+  - UI principal de lobby operativa (`/lobby`, `islands/PrincesaLobby.tsx`)
+  - CI activa en `.github/workflows/ci.yml`
+- Riesgo operativo detectado (no bloqueante para este repo): el workspace raíz
+  tiene cambios no relacionados; para merge/release de Princesa usar revisión
+  por ruta de proyecto.
+
+### Tablero de control (24h/48h)
+
+| Célula               | Owner sugerido | 24h                                                                   | 48h                                                                      | Estado      | Bloqueos                                 | Próxima revisión |
+| -------------------- | -------------- | --------------------------------------------------------------------- | ------------------------------------------------------------------------ | ----------- | ---------------------------------------- | ---------------- |
+| Backend              | API cell       | Contratos API congelados (`create/get/start`) + tests de ruta mínimos | Endpoint de acción de turno (si entra en scope) + fixtures reproducibles | 🟡 En curso | Definición exacta de scope post-MVP      | +24h             |
+| Frontend             | UI cell        | Lobby UX estable (errores/loading) + consumo robusto de API           | Vista de estado de partida integrada con start                           | 🟡 En curso | Dependencia de payload final backend     | +24h             |
+| QA                   | QA cell        | Smoke E2E mínimo (`/`, `/lobby`, create/start`) automatizado          | Regresión corta pre-release + matriz navegador base                      | 🟡 En curso | Dataset/fixtures estables                | +24h             |
+| DevOps (supervisión) | DevOps lead    | Gate PR obligatorio + checklist merge                                 | Gate release (tag) + evidencia archivada de smoke                        | 🟡 En curso | Alineación final de criterios de release | Diario           |
+
+### Criterios de merge (obligatorios)
+
+1. CI en verde en PR (`fmt`, `lint`, `check`, `build`).
+2. Sin conflictos de tipado ni rutas rotas en Fresh.
+3. Cambio incluye evidencia mínima de prueba:
+   - Backend: prueba de endpoint o curl reproducible.
+   - Frontend: captura o evidencia de flujo manual validado.
+   - QA: resultado de smoke actualizado.
+4. Documentación impactada actualizada (`docs/*` correspondiente al alcance).
+5. Revisión cruzada mínima entre células cuando hay dependencia API/UI.
+
+### Criterios de release (go/no-go)
+
+**GO** si se cumple todo:
+
+- Merge criteria completos.
+- Smoke runtime de release:
+  - `GET /` = 200
+  - `GET /lobby` = 200
+  - `POST /api/lobby/rooms` = 201
+  - `POST /api/lobby/rooms/:roomId/start` = 200
+- Sin issues P0/P1 abiertas de gameplay o creación/inicio de sala.
+- Evidencia consolidada en docs (reporte DevOps + plan de células).
+
+**NO-GO** si ocurre cualquiera:
+
+- Falla algún gate de CI.
+- Inconsistencia de contrato entre API y frontend.
+- Smoke con error 5xx/4xx inesperado en flujo base de lobby.
+- Bug crítico de estabilidad en sesión de partida.
+
+### Snapshot de validación al cierre de este ciclo (23:2x)
+
+- Comando ejecutado: `deno task check`
+- Resultado actual: 🔴 FAIL por formato en archivos de implementación activa:
+  - `routes/api/lobby/rooms/[roomId]/start.ts`
+  - `routes/api/lobby/rooms/[roomId]/join.ts`
+  - `utils/lobby.ts`
+  - `docs/PRINCESA-ARCH-CYCLE-2-REVIEW.md`
+- Estado del árbol del proyecto: hay cambios en curso (tracked + nuevos
+  archivos), por lo que **no está listo para release inmediato** hasta cerrar
+  format/check y revisar scope de PR.

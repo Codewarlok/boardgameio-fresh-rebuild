@@ -8,9 +8,9 @@ import {
 export const handler = define.handlers({
   async POST(ctx) {
     const body = await parseBody(ctx.req);
-    const room = createMockRoom(body);
+    const { room, playerId } = createMockRoom(body);
 
-    const response: CreateRoomResponse = { room };
+    const response: CreateRoomResponse = { room, playerId };
     return Response.json(response, { status: 201 });
   },
 });

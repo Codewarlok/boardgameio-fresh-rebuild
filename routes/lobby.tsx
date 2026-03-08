@@ -14,9 +14,8 @@ export default function LobbyPage() {
           Lobby · Juego Princesa
         </h1>
         <p class="text-slate-600">
-          Flujo MVP: crear sala, obtener ID para invitar jugadores, confirmar
-          número de jugadores y repartir automáticamente una baraja de 21 cartas
-          (1 al 21) entre todos los participantes.
+          Flujo MVP: crear o unirse a sala, gestionar estado ready por jugador y
+          permitir que el host inicie la partida cuando todos estén listos.
         </p>
       </header>
 
