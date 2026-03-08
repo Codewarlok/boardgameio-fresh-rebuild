@@ -83,9 +83,23 @@ export interface StartPrincesaResponse {
   room: LobbyRoom;
 }
 
+export type LobbyRoomEventType =
+  | "room_snapshot"
+  | "room_created"
+  | "player_joined"
+  | "player_ready_changed"
+  | "game_started";
+
+export interface LobbyRoomEvent {
+  type: LobbyRoomEventType;
+  room: LobbyRoom;
+  ts: string;
+}
+
 const DEFAULT_MAX_PLAYERS = 8;
 const MIN_PLAYERS_TO_START = 2;
 const roomStore = new Map<string, LobbyRoom>();
+const roomWatchers = new Map<string, Set<(event: LobbyRoomEvent) => void>>();
 
 function createRoomId(): string {
   return crypto.randomUUID().slice(0, 8).toUpperCase();
@@ -141,10 +155,49 @@ function getRoomOrThrow(roomId: string): LobbyRoom {
   return room;
 }
 
-function updateRoom(room: LobbyRoom): LobbyRoom {
+function emitRoomEvent(roomId: string, eventType: LobbyRoomEventType): void {
+  const watchers = roomWatchers.get(roomId);
+  const room = roomStore.get(roomId);
+  if (!watchers || !room || watchers.size === 0) return;
+
+  const event: LobbyRoomEvent = {
+    type: eventType,
+    room,
+    ts: nowIso(),
+  };
+
+  for (const watcher of watchers) {
+    watcher(event);
+  }
+}
+
+function updateRoom(room: LobbyRoom, eventType: LobbyRoomEventType): LobbyRoom {
   const next = { ...room, updatedAt: nowIso() };
   roomStore.set(room.id, next);
+  emitRoomEvent(room.id, eventType);
   return next;
+}
+
+export function subscribeRoomEvents(
+  roomId: string,
+  handler: (event: LobbyRoomEvent) => void,
+): () => void {
+  let watchers = roomWatchers.get(roomId);
+  if (!watchers) {
+    watchers = new Set();
+    roomWatchers.set(roomId, watchers);
+  }
+
+  watchers.add(handler);
+
+  return () => {
+    const current = roomWatchers.get(roomId);
+    if (!current) return;
+    current.delete(handler);
+    if (current.size === 0) {
+      roomWatchers.delete(roomId);
+    }
+  };
 }
 
 export function createMockRoom(
@@ -174,6 +227,8 @@ export function createMockRoom(
   };
 
   roomStore.set(roomId, room);
+  emitRoomEvent(roomId, "room_created");
+
   return { room, playerId: hostPlayerId };
 }
 
@@ -227,7 +282,7 @@ export function joinRoom(
   const nextRoom = updateRoom({
     ...room,
     players: [...room.players, player],
-  });
+  }, "player_joined");
 
   return { room: nextRoom, playerId };
 }
@@ -252,7 +307,7 @@ export function setPlayerReady(
     i === idx ? { ...player, isReady: ready } : player
   );
 
-  return updateRoom({ ...room, players });
+  return updateRoom({ ...room, players }, "player_ready_changed");
 }
 
 export function startPrincesaGame(
@@ -307,9 +362,10 @@ export function startPrincesaGame(
     players,
     status: "in_progress",
     deckRemaining: remaining,
-  });
+  }, "game_started");
 }
 
 export function resetLobbyStoreForTests(): void {
   roomStore.clear();
+  roomWatchers.clear();
 }

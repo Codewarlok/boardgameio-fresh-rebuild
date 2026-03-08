@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from "preact/hooks";
+import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 import RoomStatusBadge from "@/components/RoomStatusBadge.tsx";
-import type { LobbyRoom } from "@/utils/lobby.ts";
+import type { LobbyRoom, LobbyRoomEvent } from "@/utils/lobby.ts";
 
 type ApiError = { error?: string; message?: string };
 type ApiRoomResponse = { room: LobbyRoom };
@@ -17,6 +17,10 @@ export default function PrincesaRoomView({ roomId, playerId = "" }: Props) {
   const [loadingAction, setLoadingAction] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [wsConnected, setWsConnected] = useState(false);
+  const [wsFallback, setWsFallback] = useState(false);
+
+  const retryTimerRef = useRef<number | null>(null);
 
   const me = useMemo(
     () => room?.players.find((player) => player.id === playerId) ?? null,
@@ -28,6 +32,13 @@ export default function PrincesaRoomView({ roomId, playerId = "" }: Props) {
     room.players.every((p) => p.isReady);
   const canStart = !!room && isHost && room.status === "waiting" && allReady &&
     room.players.length >= 2;
+
+  const clearRetryTimer = () => {
+    if (retryTimerRef.current !== null) {
+      clearTimeout(retryTimerRef.current);
+      retryTimerRef.current = null;
+    }
+  };
 
   const loadRoom = async (silent = false) => {
     if (!silent) {
@@ -57,14 +68,73 @@ export default function PrincesaRoomView({ roomId, playerId = "" }: Props) {
   }, [roomId]);
 
   useEffect(() => {
+    let ws: WebSocket | null = null;
+    let attempts = 0;
+    let stopped = false;
+
+    const connect = () => {
+      if (stopped) return;
+
+      const protocol = globalThis.location.protocol === "https:" ? "wss" : "ws";
+      ws = new WebSocket(
+        `${protocol}://${globalThis.location.host}/api/lobby/rooms/${roomId.toUpperCase()}/ws`,
+      );
+
+      ws.onopen = () => {
+        attempts = 0;
+        setWsConnected(true);
+        setWsFallback(false);
+      };
+
+      ws.onmessage = (evt) => {
+        try {
+          const payload = JSON.parse(String(evt.data)) as LobbyRoomEvent;
+          if (payload.room) {
+            setRoom(payload.room);
+          }
+        } catch {
+          // ignore malformed messages
+        }
+      };
+
+      ws.onerror = () => {
+        setWsConnected(false);
+      };
+
+      ws.onclose = () => {
+        setWsConnected(false);
+        if (stopped) return;
+
+        attempts += 1;
+        setWsFallback(true);
+
+        const delay = Math.min(10000, 1000 * Math.max(attempts, 1));
+        clearRetryTimer();
+        retryTimerRef.current = setTimeout(connect, delay) as unknown as number;
+      };
+    };
+
+    connect();
+
+    return () => {
+      stopped = true;
+      clearRetryTimer();
+      ws?.close();
+      setWsConnected(false);
+    };
+  }, [roomId]);
+
+  useEffect(() => {
+    if (wsConnected) return;
+
     const timer = setInterval(() => {
       if (document.visibilityState === "visible") {
         loadRoom(true);
       }
-    }, 4000);
+    }, 8000);
 
     return () => clearInterval(timer);
-  }, [roomId]);
+  }, [roomId, wsConnected]);
 
   const withAction = async (action: string, fn: () => Promise<void>) => {
     setLoadingAction(action);
@@ -179,9 +249,15 @@ export default function PrincesaRoomView({ roomId, playerId = "" }: Props) {
                   Jugadores: <b>{room.players.length}</b> · Todos listos:{" "}
                   <b>{allReady ? "sí" : "no"}</b>
                 </p>
-                {refreshing && (
+                <p class="text-xs text-base-content/60">
+                  Canal realtime:{" "}
+                  {wsConnected ? "conectado" : "fallback activo"}
+                </p>
+                {(refreshing || wsFallback) && (
                   <p class="text-xs text-base-content/60">
-                    Actualizando estado…
+                    {refreshing
+                      ? "Sincronizando estado…"
+                      : "Reconectando realtime..."}
                   </p>
                 )}
               </div>
