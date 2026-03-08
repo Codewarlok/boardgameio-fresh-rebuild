@@ -11,9 +11,9 @@ export default function Home() {
           boardgame.io → FreshJS Rebuild
         </h1>
         <p class="mt-3 max-w-2xl text-slate-600">
-          Base funcional para juegos por turnos en Fresh. Ya puedes crear sala,
-          compartir código y preparar el flujo de selección de juego para el
-          MVP.
+          Base funcional para juegos por turnos en Fresh. Ya puedes abrir una
+          sala del juego Princesa, compartir el ID, confirmar jugadores y
+          repartir automáticamente la baraja 1..21.
         </p>
 
         <div class="mt-5 flex flex-wrap gap-3">

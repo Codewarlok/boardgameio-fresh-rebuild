@@ -1,19 +1,23 @@
-# API Cycle 1 - Lobby Base
+# API Cycle 1 - Lobby Base (Juego Princesa)
 
-Base API para lobby en memoria (mock), pensada para iterar flujo de sala en
-ciclo inicial.
+Base API para el flujo MVP del juego **Princesa**:
+
+1. host abre sala,
+2. obtiene ID de sala,
+3. confirma número de jugadores,
+4. se reparte baraja 1..21 entre jugadores.
 
 ## Estado
 
-- Persistencia: `Map` en memoria de proceso (`utils/lobby.ts`).
-- Alcance: mientras el proceso del servidor esté vivo.
-- No hay base de datos ni sincronización entre instancias.
+- Persistencia: `Map` en memoria (`utils/lobby.ts`).
+- Alcance: dura mientras el proceso está vivo.
+- No hay DB ni sincronización multi-instancia en este ciclo.
 
 ## Endpoints
 
 ### `POST /api/lobby/rooms`
 
-Crea una sala mock con un host inicial.
+Crea sala nueva para **Princesa**.
 
 #### Request body (opcional)
 
@@ -23,23 +27,43 @@ Crea una sala mock con un host inicial.
 }
 ```
 
-- Si no se envía JSON o `hostName`, se usa `"Host"` por defecto.
-
 #### Response `201 Created`
 
 ```json
 {
   "room": {
     "id": "A1B2C3D4",
+    "game": "princesa",
     "status": "waiting",
-    "createdAt": "2026-03-08T00:00:00.000Z",
-    "updatedAt": "2026-03-08T00:00:00.000Z",
+    "maxPlayers": 2,
+    "deckRemaining": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17,
+      18,
+      19,
+      20,
+      21
+    ],
     "players": [
       {
-        "id": "9d5d6f7a-...",
         "name": "Dio",
         "isHost": true,
-        "joinedAt": "2026-03-08T00:00:00.000Z"
+        "hand": []
       }
     ]
   }
@@ -50,28 +74,11 @@ Crea una sala mock con un host inicial.
 
 ### `GET /api/lobby/rooms/:roomId`
 
-Consulta el estado actual de una sala.
+Consulta estado de sala.
 
 #### Response `200 OK`
 
-```json
-{
-  "room": {
-    "id": "A1B2C3D4",
-    "status": "waiting",
-    "createdAt": "2026-03-08T00:00:00.000Z",
-    "updatedAt": "2026-03-08T00:00:00.000Z",
-    "players": [
-      {
-        "id": "9d5d6f7a-...",
-        "name": "Dio",
-        "isHost": true,
-        "joinedAt": "2026-03-08T00:00:00.000Z"
-      }
-    ]
-  }
-}
-```
+Retorna objeto `room` completo.
 
 #### Response `404 Not Found`
 
@@ -81,18 +88,44 @@ Consulta el estado actual de una sala.
 }
 ```
 
-## Tipos compartidos
+---
 
-Definidos en `utils/lobby.ts`:
+### `POST /api/lobby/rooms/:roomId/start`
 
+Confirma número de jugadores e inicia partida de Princesa repartiendo la baraja
+(1..21).
+
+#### Request body
+
+```json
+{
+  "playerCount": 4
+}
+```
+
+#### Response `200 OK`
+
+Retorna `room` en estado `in_progress`, con `players[].hand` ya repartida y
+`deckRemaining`.
+
+#### Response `404 Not Found`
+
+```json
+{
+  "error": "Room not found"
+}
+```
+
+## Tipos y helpers
+
+En `utils/lobby.ts`:
+
+- `LobbyGameType`
 - `LobbyRoomStatus`
 - `LobbyPlayer`
 - `LobbyRoom`
-- `CreateRoomRequest`
-- `CreateRoomResponse`
-- `GetRoomStateResponse`
-
-Además se exponen helpers de dominio para ciclo mock:
-
-- `createMockRoom(input?)`
-- `getRoomById(roomId)`
+- `StartPrincesaRequest`
+- `StartPrincesaResponse`
+- `createMockRoom()`
+- `getRoomById()`
+- `startPrincesaGame()`
