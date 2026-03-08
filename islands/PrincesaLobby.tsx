@@ -129,7 +129,10 @@ export default function PrincesaLobby() {
         },
       );
       setRoom(data.room);
-      setNotice("Partida iniciada. Cartas repartidas.");
+      setNotice("Partida iniciada. Redirigiendo a la vista de sala...");
+      globalThis.location.href = `/sala/${data.room.id}?playerId=${
+        encodeURIComponent(playerId)
+      }`;
     });
   };
 
