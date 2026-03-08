@@ -43,6 +43,12 @@ export interface LobbyRoom {
   deckRemaining: number[];
 }
 
+export interface LobbyRoomEvent {
+  type: "ROOM_UPDATED";
+  room: LobbyRoom;
+  emittedAt: string;
+}
+
 export interface CreateRoomRequest {
   hostName?: string;
 }
@@ -86,6 +92,7 @@ export interface StartPrincesaResponse {
 const DEFAULT_MAX_PLAYERS = 8;
 const MIN_PLAYERS_TO_START = 2;
 const roomStore = new Map<string, LobbyRoom>();
+const roomSubscribers = new Map<string, Set<(event: LobbyRoomEvent) => void>>();
 
 function createRoomId(): string {
   return crypto.randomUUID().slice(0, 8).toUpperCase();
@@ -141,10 +148,46 @@ function getRoomOrThrow(roomId: string): LobbyRoom {
   return room;
 }
 
+function notifyRoomUpdated(room: LobbyRoom): void {
+  const listeners = roomSubscribers.get(room.id);
+  if (!listeners || listeners.size === 0) return;
+
+  const event: LobbyRoomEvent = {
+    type: "ROOM_UPDATED",
+    room,
+    emittedAt: nowIso(),
+  };
+
+  for (const listener of listeners) {
+    listener(event);
+  }
+}
+
 function updateRoom(room: LobbyRoom): LobbyRoom {
   const next = { ...room, updatedAt: nowIso() };
   roomStore.set(room.id, next);
+  notifyRoomUpdated(next);
   return next;
+}
+
+export function subscribeRoomEvents(
+  roomId: string,
+  listener: (event: LobbyRoomEvent) => void,
+): () => void {
+  const key = roomId.toUpperCase();
+  const listeners = roomSubscribers.get(key) ?? new Set();
+  listeners.add(listener);
+  roomSubscribers.set(key, listeners);
+
+  return () => {
+    const current = roomSubscribers.get(key);
+    if (!current) return;
+
+    current.delete(listener);
+    if (current.size === 0) {
+      roomSubscribers.delete(key);
+    }
+  };
 }
 
 export function createMockRoom(
@@ -174,6 +217,7 @@ export function createMockRoom(
   };
 
   roomStore.set(roomId, room);
+  notifyRoomUpdated(room);
   return { room, playerId: hostPlayerId };
 }
 
@@ -312,4 +356,5 @@ export function startPrincesaGame(
 
 export function resetLobbyStoreForTests(): void {
   roomStore.clear();
+  roomSubscribers.clear();
 }

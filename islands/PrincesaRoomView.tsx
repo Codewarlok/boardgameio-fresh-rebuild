@@ -1,9 +1,14 @@
-import { useEffect, useMemo, useState } from "preact/hooks";
+import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 import RoomStatusBadge from "@/components/RoomStatusBadge.tsx";
 import type { LobbyRoom } from "@/utils/lobby.ts";
 
 type ApiError = { error?: string; message?: string };
 type ApiRoomResponse = { room: LobbyRoom };
+type RoomSocketEvent = {
+  type: "ROOM_SNAPSHOT" | "ROOM_UPDATED";
+  room: LobbyRoom;
+  emittedAt: string;
+};
 
 interface Props {
   roomId: string;
@@ -17,6 +22,12 @@ export default function PrincesaRoomView({ roomId, playerId = "" }: Props) {
   const [loadingAction, setLoadingAction] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [channel, setChannel] = useState<"websocket" | "polling">("polling");
+
+  const wsRef = useRef<WebSocket | null>(null);
+  const reconnectTimerRef = useRef<number | null>(null);
+  const pollTimerRef = useRef<number | null>(null);
+  const reconnectAttemptsRef = useRef(0);
 
   const me = useMemo(
     () => room?.players.find((player) => player.id === playerId) ?? null,
@@ -28,6 +39,36 @@ export default function PrincesaRoomView({ roomId, playerId = "" }: Props) {
     room.players.every((p) => p.isReady);
   const canStart = !!room && isHost && room.status === "waiting" && allReady &&
     room.players.length >= 2;
+
+  const clearTimers = () => {
+    if (reconnectTimerRef.current !== null) {
+      clearTimeout(reconnectTimerRef.current);
+      reconnectTimerRef.current = null;
+    }
+
+    if (pollTimerRef.current !== null) {
+      clearInterval(pollTimerRef.current);
+      pollTimerRef.current = null;
+    }
+  };
+
+  const startFallbackPolling = () => {
+    if (pollTimerRef.current !== null) return;
+    setChannel("polling");
+
+    pollTimerRef.current = setInterval(() => {
+      if (document.visibilityState === "visible") {
+        loadRoom(true);
+      }
+    }, 10000);
+  };
+
+  const stopFallbackPolling = () => {
+    if (pollTimerRef.current !== null) {
+      clearInterval(pollTimerRef.current);
+      pollTimerRef.current = null;
+    }
+  };
 
   const loadRoom = async (silent = false) => {
     if (!silent) {
@@ -52,18 +93,77 @@ export default function PrincesaRoomView({ roomId, playerId = "" }: Props) {
     }
   };
 
+  const scheduleReconnect = () => {
+    if (reconnectTimerRef.current !== null) return;
+
+    reconnectAttemptsRef.current += 1;
+    const delay = Math.min(
+      1000 * 2 ** (reconnectAttemptsRef.current - 1),
+      10000,
+    );
+
+    reconnectTimerRef.current = setTimeout(() => {
+      reconnectTimerRef.current = null;
+      connectRoomSocket();
+    }, delay);
+  };
+
+  const connectRoomSocket = () => {
+    const protocol = location.protocol === "https:" ? "wss:" : "ws:";
+    const wsUrl =
+      `${protocol}//${location.host}/api/lobby/rooms/${roomId.toUpperCase()}/ws`;
+
+    try {
+      const socket = new WebSocket(wsUrl);
+      wsRef.current = socket;
+
+      socket.onopen = () => {
+        reconnectAttemptsRef.current = 0;
+        setChannel("websocket");
+        stopFallbackPolling();
+      };
+
+      socket.onmessage = (event) => {
+        try {
+          const payload = JSON.parse(event.data) as RoomSocketEvent;
+          if (
+            (payload.type === "ROOM_SNAPSHOT" ||
+              payload.type === "ROOM_UPDATED") && payload.room
+          ) {
+            setRoom(payload.room);
+            setLoading(false);
+            setRefreshing(false);
+            setError("");
+          }
+        } catch {
+          // ignore invalid payloads
+        }
+      };
+
+      socket.onerror = () => {
+        socket.close();
+      };
+
+      socket.onclose = () => {
+        wsRef.current = null;
+        startFallbackPolling();
+        scheduleReconnect();
+      };
+    } catch {
+      startFallbackPolling();
+      scheduleReconnect();
+    }
+  };
+
   useEffect(() => {
     loadRoom();
-  }, [roomId]);
+    connectRoomSocket();
 
-  useEffect(() => {
-    const timer = setInterval(() => {
-      if (document.visibilityState === "visible") {
-        loadRoom(true);
-      }
-    }, 4000);
-
-    return () => clearInterval(timer);
+    return () => {
+      clearTimers();
+      wsRef.current?.close();
+      wsRef.current = null;
+    };
   }, [roomId]);
 
   const withAction = async (action: string, fn: () => Promise<void>) => {
@@ -151,6 +251,10 @@ export default function PrincesaRoomView({ roomId, playerId = "" }: Props) {
               Copiar ID
             </button>
             {room && <RoomStatusBadge status={room.status} />}
+            <span class="badge badge-outline">
+              Canal:{" "}
+              {channel === "websocket" ? "WebSocket" : "Polling fallback"}
+            </span>
           </div>
           <p class="text-sm text-base-content/70">
             Compártelo para que otros jugadores entren desde el lobby.
