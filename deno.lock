@@ -36,6 +36,7 @@
     "npm:@prefresh/vite@^2.4.8": "2.4.11_preact@10.28.0_vite@7.2.2__picomatch@4.0.3",
     "npm:@tailwindcss/vite@^4.1.12": "4.1.16_vite@7.2.2__picomatch@4.0.3",
     "npm:boardgame.io@~0.50.2": "0.50.2",
+    "npm:daisyui@^5.5.19": "5.5.19",
     "npm:esbuild-wasm@~0.25.11": "0.25.12",
     "npm:esbuild@0.25.7": "0.25.7",
     "npm:esbuild@~0.25.5": "0.25.7",
@@ -1058,6 +1059,9 @@
         "vary"
       ]
     },
+    "daisyui@5.5.19": {
+      "integrity": "sha512-pbFAkl1VCEh/MPCeclKL61I/MqRIFFhNU7yiXoDDRapXN4/qNCoMxeCCswyxEEhqL5eiTTfwHvucFtOE71C9sA=="
+    },
     "debug@4.3.7": {
       "integrity": "sha512-Er2nc/H7RrMXZBFCEim6TCmMk02Z8vLC2Rbi1KEBggpo0fS6l0S1nnapwmIi3yW/+GOJap1Krg4w0Hg80oCqgQ==",
       "dependencies": [
@@ -1934,6 +1938,7 @@
       "npm:@preact/signals@^2.5.0",
       "npm:@tailwindcss/vite@^4.1.12",
       "npm:boardgame.io@~0.50.2",
+      "npm:daisyui@^5.5.19",
       "npm:preact@^10.27.2",
       "npm:tailwindcss@^4.1.10",
       "npm:vite@^7.1.3"

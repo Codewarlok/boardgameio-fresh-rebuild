@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "preact/hooks";
+import RoomStatusBadge from "@/components/RoomStatusBadge.tsx";
 import type { LobbyRoom } from "@/utils/lobby.ts";
 
 type ApiError = { error?: string; message?: string };
@@ -13,6 +14,7 @@ export default function PrincesaRoomView({ roomId, playerId = "" }: Props) {
   const [room, setRoom] = useState<LobbyRoom | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [loadingAction, setLoadingAction] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
 
@@ -21,6 +23,12 @@ export default function PrincesaRoomView({ roomId, playerId = "" }: Props) {
     [room, playerId],
   );
 
+  const isHost = !!me?.isHost;
+  const allReady = !!room && room.players.length > 0 &&
+    room.players.every((p) => p.isReady);
+  const canStart = !!room && isHost && room.status === "waiting" && allReady &&
+    room.players.length >= 2;
+
   const loadRoom = async (silent = false) => {
     if (!silent) {
       setLoading(true);
@@ -28,12 +36,12 @@ export default function PrincesaRoomView({ roomId, playerId = "" }: Props) {
       setRefreshing(true);
     }
 
-    setError("");
     try {
       const data = await fetchJson<ApiRoomResponse>(
         `/api/lobby/rooms/${roomId.toUpperCase()}`,
       );
       setRoom(data.room);
+      if (silent) setError("");
     } catch (err) {
       setError(
         err instanceof Error ? err.message : "No se pudo cargar la sala",
@@ -48,6 +56,28 @@ export default function PrincesaRoomView({ roomId, playerId = "" }: Props) {
     loadRoom();
   }, [roomId]);
 
+  useEffect(() => {
+    const timer = setInterval(() => {
+      if (document.visibilityState === "visible") {
+        loadRoom(true);
+      }
+    }, 4000);
+
+    return () => clearInterval(timer);
+  }, [roomId]);
+
+  const withAction = async (action: string, fn: () => Promise<void>) => {
+    setLoadingAction(action);
+    setError("");
+    try {
+      await fn();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Error inesperado");
+    } finally {
+      setLoadingAction(null);
+    }
+  };
+
   const copyRoomId = async () => {
     try {
       await navigator.clipboard.writeText(roomId.toUpperCase());
@@ -58,79 +88,158 @@ export default function PrincesaRoomView({ roomId, playerId = "" }: Props) {
     }
   };
 
+  const toggleReady = async () => {
+    await withAction("ready", async () => {
+      if (!room || !me || !playerId) {
+        throw new Error("Debes crear o unirte a una sala");
+      }
+
+      const data = await fetchJson<ApiRoomResponse>(
+        `/api/lobby/rooms/${room.id}/ready`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ playerId, ready: !me.isReady }),
+        },
+      );
+
+      setRoom(data.room);
+      setNotice(!me.isReady ? "Marcado como listo." : "Ya no estás listo.");
+    });
+  };
+
+  const startGame = async () => {
+    await withAction("start", async () => {
+      if (!room || !playerId) {
+        throw new Error("Debes crear o unirte a una sala");
+      }
+
+      const data = await fetchJson<ApiRoomResponse>(
+        `/api/lobby/rooms/${room.id}/start`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ playerId }),
+        },
+      );
+
+      setRoom(data.room);
+      setNotice("Partida iniciada.");
+    });
+  };
+
   if (loading) {
-    return <p class="text-sm text-slate-600">Cargando sala…</p>;
+    return <span class="loading loading-dots loading-lg" />;
   }
 
   return (
     <section class="space-y-6">
-      <article class="rounded-2xl border-2 border-emerald-300 bg-emerald-50 p-5">
-        <p class="text-xs font-semibold uppercase tracking-wide text-emerald-700">
-          Sala activa
-        </p>
-        <div class="mt-2 flex flex-wrap items-center gap-3">
-          <p class="text-3xl font-black tracking-wider text-emerald-900">
-            {roomId.toUpperCase()}
+      <article class="card bg-base-100 border-2 border-primary/40 shadow-sm">
+        <div class="card-body">
+          <p class="text-xs font-semibold uppercase tracking-wide text-primary">
+            Sala activa
           </p>
-          <button
-            type="button"
-            class="rounded-lg bg-emerald-700 px-3 py-2 text-sm font-semibold text-white"
-            onClick={copyRoomId}
-          >
-            Copiar ID
-          </button>
-        </div>
-        <p class="mt-2 text-sm text-emerald-800">
-          Compártelo con el segundo jugador para que entre desde el lobby.
-        </p>
-      </article>
-
-      {error && <p class="text-sm font-medium text-red-600">{error}</p>}
-      {notice && <p class="text-sm font-medium text-emerald-700">{notice}</p>}
-
-      {room && (
-        <article class="rounded-2xl border border-slate-200 bg-white p-5 space-y-4 shadow-sm">
-          <div class="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <h2 class="text-lg font-semibold text-slate-900">
-                Estado de partida
-              </h2>
-              <p class="text-sm text-slate-700">
-                Estado: <b>{room.status}</b> · Jugadores:{" "}
-                <b>{room.players.length}</b>
-              </p>
-              <p class="text-sm text-slate-700">
-                Cartas restantes en mazo: <b>{room.deckRemaining.length}</b>
-              </p>
-            </div>
+          <div class="mt-1 flex flex-wrap items-center gap-3">
+            <p class="font-mono text-3xl font-black tracking-widest text-primary">
+              {roomId.toUpperCase()}
+            </p>
             <button
               type="button"
-              class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 disabled:cursor-not-allowed disabled:opacity-60"
-              onClick={() => loadRoom(true)}
-              disabled={refreshing}
+              class="btn btn-primary btn-sm"
+              onClick={copyRoomId}
             >
-              {refreshing ? "Actualizando..." : "Actualizar"}
+              Copiar ID
             </button>
+            {room && <RoomStatusBadge status={room.status} />}
           </div>
+          <p class="text-sm text-base-content/70">
+            Compártelo para que otros jugadores entren desde el lobby.
+          </p>
+        </div>
+      </article>
 
-          <div class="grid gap-3 md:grid-cols-2">
-            {room.players.map((p) => (
-              <div
-                key={p.id}
-                class="rounded-lg border border-slate-200 bg-slate-50 p-3"
-              >
-                <p class="font-semibold text-slate-900">
-                  {p.name} {p.isHost ? "(host)" : ""}
-                  {me?.id === p.id ? " · tú" : ""}
+      {error && (
+        <div class="alert alert-error">
+          <span>{error}</span>
+        </div>
+      )}
+      {notice && (
+        <div class="alert alert-success">
+          <span>{notice}</span>
+        </div>
+      )}
+
+      {room && (
+        <article class="card bg-base-100 border border-base-300 shadow-sm">
+          <div class="card-body space-y-4">
+            <div class="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h2 class="card-title">Espera de jugadores</h2>
+                <p class="text-sm text-base-content/70">
+                  Jugadores: <b>{room.players.length}</b> · Todos listos:{" "}
+                  <b>{allReady ? "sí" : "no"}</b>
                 </p>
-                <p class="text-sm text-slate-600">
-                  Ready: {p.isReady ? "sí" : "no"}
-                </p>
-                <p class="text-sm text-slate-600">
-                  Mano: {p.hand.length > 0 ? p.hand.join(", ") : "sin cartas"}
-                </p>
+                {refreshing && (
+                  <p class="text-xs text-base-content/60">
+                    Actualizando estado…
+                  </p>
+                )}
               </div>
-            ))}
+              <button
+                type="button"
+                class="btn btn-outline btn-sm"
+                onClick={() => loadRoom(true)}
+                disabled={refreshing}
+              >
+                {refreshing ? "Actualizando..." : "Actualizar"}
+              </button>
+            </div>
+
+            <div class="grid gap-3 md:grid-cols-2">
+              {room.players.map((p) => (
+                <div
+                  key={p.id}
+                  class="rounded-xl border border-base-300 bg-base-200 p-3"
+                >
+                  <p class="font-semibold">
+                    {p.name} {p.isHost ? "(host)" : ""}
+                    {me?.id === p.id ? " · tú" : ""}
+                  </p>
+                  <p class="text-sm">Ready: {p.isReady ? "sí" : "no"}</p>
+                </div>
+              ))}
+            </div>
+
+            <div class="flex flex-wrap gap-3">
+              <button
+                type="button"
+                class="btn btn-accent"
+                onClick={toggleReady}
+                disabled={loadingAction !== null || !me ||
+                  room.status !== "waiting"}
+              >
+                {loadingAction === "ready"
+                  ? "Guardando..."
+                  : me?.isReady
+                  ? "Quitar ready"
+                  : "Marcar ready"}
+              </button>
+
+              <button
+                type="button"
+                class="btn btn-secondary"
+                onClick={startGame}
+                disabled={loadingAction !== null || !canStart}
+              >
+                {loadingAction === "start" ? "Iniciando..." : "Iniciar partida"}
+              </button>
+            </div>
+
+            {!isHost && room.status === "waiting" && (
+              <p class="text-xs text-base-content/60">
+                Solo el host puede iniciar cuando todos estén ready.
+              </p>
+            )}
           </div>
         </article>
       )}
