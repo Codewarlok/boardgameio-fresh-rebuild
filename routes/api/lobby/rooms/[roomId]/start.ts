@@ -7,7 +7,7 @@ import {
 
 export const handler = define.handlers({
   async POST(ctx) {
-    const roomId = ctx.params.roomId;
+    const roomId = ctx.params.roomId.toUpperCase();
     const body = await parseBody(ctx.req);
 
     const room = startPrincesaGame(roomId, body.playerCount);
